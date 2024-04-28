@@ -80,7 +80,7 @@ def compute_ESM_embeddings(model, alphabet, labels, sequences):
 
     with torch.no_grad():
         for batch_idx, (labels, strs, toks) in enumerate(data_loader):
-            print(f"Processing {batch_idx + 1} of {len(batches)} batches ({toks.size(0)} sequences)")
+            #print(f"Processing {batch_idx + 1} of {len(batches)} batches ({toks.size(0)} sequences)")
             if torch.cuda.is_available():
                 toks = toks.to(device="cuda", non_blocking=True)
 
@@ -144,7 +144,7 @@ class InferenceDataset(Dataset):
 
         # generate LM embeddings
         if lm_embeddings and (precomputed_lm_embeddings is None or precomputed_lm_embeddings[0] is None):
-            print("Generating ESM language model embeddings")
+            #print("Generating ESM language model embeddings")
             model_location = "esm2_t33_650M_UR50D"
             model, alphabet = pretrained.load_model_and_alphabet(model_location)
             model.eval()
@@ -173,7 +173,7 @@ class InferenceDataset(Dataset):
 
         # generate structures with ESMFold
         if None in protein_files:
-            print("generating missing structures with ESMFold")
+            #print("generating missing structures with ESMFold")
             model = esm.pretrained.esmfold_v1()
             model = model.eval().cuda()
 
@@ -181,7 +181,7 @@ class InferenceDataset(Dataset):
                 if protein_files[i] is None:
                     self.protein_files[i] = f"{out_dir}/{complex_names[i]}/{complex_names[i]}_esmfold.pdb"
                     if not os.path.exists(self.protein_files[i]):
-                        print("generating", self.protein_files[i])
+                        #print("generating", self.protein_files[i])
                         generate_ESM_structure(model, self.protein_files[i], protein_sequences[i])
 
     def len(self):

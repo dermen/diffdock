@@ -12,6 +12,7 @@ from torch_cluster import knn_graph
 import prody as pr
 
 import torch.nn.functional as F
+from prody import LOGGER as PRODY_LOG
 
 from datasets.conformer_matching import get_torsion_angles, optimize_rotatable_bonds
 from datasets.constants import aa_short2long, atom_order, three_to_one
@@ -128,7 +129,12 @@ def safe_index(l, e):
 def moad_extract_receptor_structure(path, complex_graph, neighbor_cutoff=20, max_neighbors=None, sequences_to_embeddings=None,
                                     knn_only_graph=False, lm_embeddings=None, all_atoms=False, atom_cutoff=None, atom_max_neighbors=None):
     # load the entire pdb file
+    # hush the prody PDB parser
+    temp = PRODY_LOG.verbosity
+    PRODY_LOG.verbosity="info"
     pdb = pr.parsePDB(path)
+    PRODY_LOG.verbosity = temp
+    
     seq = pdb.ca.getSequence()
     coords = get_coords(pdb)
     one_hot = get_onehot_sequence(seq)
