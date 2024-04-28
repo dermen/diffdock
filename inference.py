@@ -3,6 +3,24 @@ import logging
 import pprint
 import traceback
 from argparse import ArgumentParser, Namespace, FileType
+try:
+    from mpi4py import MPI
+    COMM = MPI.COMM_WORLD
+except ImportError:
+    class DummieCommunicator:
+        def __init__(self):
+            self.rank = 0
+            self.size = 1
+        def reduce(self, val):
+            return val
+        def barrier(self):
+            pass
+    COMM = DummieCommunicator()
+
+def print0(*args, **kwargs):
+    if COMM.rank==0:
+        print(*args, **kwargs)
+print0("Beginning imports")
 import copy
 import os
 from functools import partial
@@ -26,6 +44,7 @@ from rdkit.Chem import RemoveAllHs
 # TODO imports are a little odd, utils seems to shadow things
 from utils.logging_utils import configure_logger, get_logger
 import utils.utils
+print0("Beginning project imports")
 from datasets.process_mols import write_mol_with_coords
 from utils.download import download_and_extract
 from utils.diffusion_utils import t_to_sigma as t_to_sigma_compl, get_t_schedule
