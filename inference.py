@@ -141,7 +141,7 @@ def main(args):
                 arg_dict[key] = value
 
     # Download models if they don't exist locally
-    if not os.path.exists(args.model_dir):
+    if not os.path.exists(args.model_dir) and COMM.rank==0:
         logger.info(f"Models not found. Downloading")
         remote_urls = REMOTE_URLS
         downloaded_successfully = False
@@ -161,18 +161,29 @@ def main(args):
 
         if not downloaded_successfully:
             raise Exception(f"Models not found locally and failed to download them from {remote_urls}")
+    COMM.barrier()
 
+    if COMM.rank==0:
+        os.makedirs(args.out_dir, exist_ok=True)
+    COMM.barrier()
+    args.out_dir = os.path.join( args.out_dir, "proc%d" % COMM.rank)
     os.makedirs(args.out_dir, exist_ok=True)
+
+    print0("Loading model parameters")
     with open(f'{args.model_dir}/model_parameters.yml') as f:
         score_model_args = Namespace(**yaml.full_load(f))
     if args.confidence_model_dir is not None:
         with open(f'{args.confidence_model_dir}/model_parameters.yml') as f:
             confidence_args = Namespace(**yaml.full_load(f))
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logger.info(f"DiffDock will run on {device}")
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda:%d" % (COMM.rank % args.ndev)
+    device = torch.device(device)
+    print(f"Process {COMM.rank}: DiffDock will run on {device}", flush=True)
 
     if args.protein_ligand_csv is not None:
+        print0("readin input csv")
         df = pd.read_csv(args.protein_ligand_csv)
         complex_name_list = set_nones(df['complex_name'].tolist())
         protein_path_list = set_nones(df['protein_path'].tolist())
@@ -185,11 +196,12 @@ def main(args):
         ligand_description_list = [args.ligand_description]
 
     complex_name_list = [name if name is not None else f"complex_{i}" for i, name in enumerate(complex_name_list)]
-    for name in complex_name_list:
-        write_dir = f'{args.out_dir}/{name}'
-        os.makedirs(write_dir, exist_ok=True)
+    #for name in complex_name_list:
+    #    write_dir = f'{args.out_dir}/{name}'
+    #    os.makedirs(write_dir, exist_ok=True)
 
     # preprocessing of complexes into geometric graphs
+    print0("creating inference dataset")
     test_dataset = InferenceDataset(out_dir=args.out_dir, complex_names=complex_name_list, protein_files=protein_path_list,
                                     ligand_descriptions=ligand_description_list, protein_sequences=protein_sequence_list,
                                     lm_embeddings=True,
@@ -198,11 +210,14 @@ def main(args):
                                     all_atoms=score_model_args.all_atoms, atom_radius=score_model_args.atom_radius,
                                     atom_max_neighbors=score_model_args.atom_max_neighbors,
                                     knn_only_graph=False if not hasattr(score_model_args, 'not_knn_only_graph') else not score_model_args.not_knn_only_graph)
+
+    print0("creating test loader")
     test_loader = DataLoader(dataset=test_dataset, batch_size=1, shuffle=False)
 
     if args.confidence_model_dir is not None and not confidence_args.use_original_model_cache:
-        logger.info('Confidence model uses different type of graphs than the score model. '
-                    'Loading (or creating if not existing) the data for the confidence model now.')
+        if COMM.rank==0:
+            logger.info('Confidence model uses different type of graphs than the score model. '
+                  'Loading (or creating if not existing) the data for the confidence model now.')
         confidence_test_dataset = \
             InferenceDataset(out_dir=args.out_dir, complex_names=complex_name_list, protein_files=protein_path_list,
                              ligand_descriptions=ligand_description_list, protein_sequences=protein_sequence_list,
@@ -237,11 +252,17 @@ def main(args):
 
     tr_schedule = get_t_schedule(inference_steps=args.inference_steps, sigma_schedule='expbeta')
 
+    tstart = time.time()
     failures, skipped = 0, 0
     N = args.samples_per_complex
-    test_ds_size = len(test_dataset)
-    logger.info(f'Size of test dataset: {test_ds_size}')
-    for idx, orig_complex_graph in tqdm(enumerate(test_loader)):
+    if COMM.rank==0:
+        logger.info('Size of test dataset: ', len(test_dataset))
+    iterator = enumerate(test_loader)
+    if COMM.rank==0:
+        iterator = tqdm(iterator)
+    for idx, orig_complex_graph in iterator:
+        if idx % COMM.size != COMM.rank:
+            continue
         if not orig_complex_graph.success[0]:
             skipped += 1
             logger.warning(f"The test dataset did not contain {test_dataset.complex_names[idx]} for {test_dataset.ligand_descriptions[idx]} and {test_dataset.protein_files[idx]}. We are skipping this complex.")
@@ -303,6 +324,7 @@ def main(args):
 
             # save predictions
             write_dir = f'{args.out_dir}/{complex_name_list[idx]}'
+            os.makedirs(write_dir, exist_ok=True)
             for rank, pos in enumerate(ligand_pos):
                 mol_pred = copy.deepcopy(lig)
                 if score_model_args.remove_hs: mol_pred = RemoveAllHs(mol_pred)
@@ -321,17 +343,21 @@ def main(args):
         except Exception as e:
             logger.warning("Failed on", orig_complex_graph["name"], e)
             failures += 1
+    t_elapse = time.time()-tstart
+    t_elapse = COMM.reduce(t_elapse)
+    failures = COMM.reduce(failures)
+    skipped = COMM.reduce(skipped)
 
-    result_msg = f"""
-    Failed for {failures} / {test_ds_size} complexes.
-    Skipped {skipped} / {test_ds_size} complexes.
-"""
-    if failures or skipped:
-        logger.warning(result_msg)
-    else:
-        logger.info(result_msg)
-    logger.info(f"Results saved in {args.out_dir}")
-
+    if COMM.rank==0:
+        result_msg = f"Failed for {failures} / {test_ds_size} complexes.\nSkipped {skipped} / {test_ds_size} complexes."
+        if failures or skipped:
+            logger.warning(result_msg)
+        else
+            logger.info(result_msg)
+        logger.info(f"testing took {t_elapse/COMM.size:.4f} seconds")
+        logger.info(f'Failed for {failures} complexes')
+        logger.info(f'Skipped {skipped} complexes')
+        logger.info(f'Results are in {args.out_dir} for proc0 and similar for other procs')
 
 if __name__ == "__main__":
     _args = get_parser().parse_args()
