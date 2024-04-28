@@ -129,6 +129,7 @@ def main(args):
     configure_logger(args.loglevel)
     logger = get_logger()
 
+    print0("Loading config")
     if args.config:
         config_dict = yaml.load(args.config, Loader=yaml.FullLoader)
         arg_dict = args.__dict__
