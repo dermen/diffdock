@@ -2,6 +2,7 @@ import functools
 import logging
 import pprint
 import traceback
+import time
 from argparse import ArgumentParser, Namespace, FileType
 try:
     from mpi4py import MPI
@@ -19,24 +20,32 @@ except ImportError:
 
 def print0(*args, **kwargs):
     if COMM.rank==0:
-        print(*args, **kwargs)
+        print(*args, **kwargs, flush=True)
 print0("Beginning imports")
 import copy
 import os
+print0("functools")
 from functools import partial
 import warnings
+print0("warnings")
 from typing import Mapping, Optional
 
 import yaml
 
+print0("warnings")
 # Ignore pandas deprecation warning around pyarrow
 warnings.filterwarnings("ignore", category=DeprecationWarning,
                         message="(?s).*Pyarrow will become a required dependency of pandas.*")
 
+print0("importing np")
 import numpy as np
+print0("importing pd")
 import pandas as pd
+print0("importing torch")
 import torch
+print0("importing torch geometric")
 from torch_geometric.loader import DataLoader
+print0("Done.")
 
 from rdkit import RDLogger
 from rdkit.Chem import RemoveAllHs
@@ -120,6 +129,7 @@ def get_parser():
     parser.add_argument('--gnina_full_dock', action='store_true', default=False, help='')
     parser.add_argument('--gnina_autobox_add', type=float, default=4.0)
     parser.add_argument('--gnina_poses_to_optimize', type=int, default=1)
+    parser.add_argument('--ndev', type=int, default=1, help='number of GPU devices per compute node')
 
     return parser
 
@@ -209,7 +219,8 @@ def main(args):
                                     c_alpha_max_neighbors=score_model_args.c_alpha_max_neighbors,
                                     all_atoms=score_model_args.all_atoms, atom_radius=score_model_args.atom_radius,
                                     atom_max_neighbors=score_model_args.atom_max_neighbors,
-                                    knn_only_graph=False if not hasattr(score_model_args, 'not_knn_only_graph') else not score_model_args.not_knn_only_graph)
+                                    knn_only_graph=False if not hasattr(score_model_args, 'not_knn_only_graph') else not score_model_args.not_knn_only_graph,
+                                    device=device)
 
     print0("creating test loader")
     test_loader = DataLoader(dataset=test_dataset, batch_size=1, shuffle=False)
@@ -341,7 +352,7 @@ def main(args):
                         visualization_list[batch_idx].write(os.path.join(write_dir, f'rank{rank+1}_reverseprocess.pdb'))
 
         except Exception as e:
-            logger.warning("Failed on", orig_complex_graph["name"], e)
+            print("Failed on %s with %s" % ( orig_complex_graph["name"], str(e)))
             failures += 1
     t_elapse = time.time()-tstart
     t_elapse = COMM.reduce(t_elapse)
@@ -349,10 +360,10 @@ def main(args):
     skipped = COMM.reduce(skipped)
 
     if COMM.rank==0:
-        result_msg = f"Failed for {failures} / {test_ds_size} complexes.\nSkipped {skipped} / {test_ds_size} complexes."
+        result_msg = f"Failed for {failures} / {len(test_dataset)} complexes.\nSkipped {skipped} / {len(test_dataset)} complexes."
         if failures or skipped:
             logger.warning(result_msg)
-        else
+        else:
             logger.info(result_msg)
         logger.info(f"testing took {t_elapse/COMM.size:.4f} seconds")
         logger.info(f'Failed for {failures} complexes')

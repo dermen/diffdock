@@ -61,7 +61,7 @@ def get_sequences(protein_files, protein_sequences):
     return new_sequences
 
 
-def compute_ESM_embeddings(model, alphabet, labels, sequences):
+def compute_ESM_embeddings(model, alphabet, labels, sequences, dev=None):
     # settings used
     toks_per_batch = 4096
     repr_layers = [33]
@@ -81,8 +81,10 @@ def compute_ESM_embeddings(model, alphabet, labels, sequences):
     with torch.no_grad():
         for batch_idx, (labels, strs, toks) in enumerate(data_loader):
             #print(f"Processing {batch_idx + 1} of {len(batches)} batches ({toks.size(0)} sequences)")
-            if torch.cuda.is_available():
+            if dev is None and torch.cuda.is_available():
                 toks = toks.to(device="cuda", non_blocking=True)
+            elif dev is not None: # note check whether cuda is in device for non blocking
+                toks = toks.to(device=dev, non_blocking=True)
 
             out = model(toks, repr_layers=repr_layers, return_contacts=False)
             representations = {layer: t.to(device="cpu") for layer, t in out["representations"].items()}
@@ -127,7 +129,7 @@ def generate_ESM_structure(model, filename, sequence):
 class InferenceDataset(Dataset):
     def __init__(self, out_dir, complex_names, protein_files, ligand_descriptions, protein_sequences, lm_embeddings,
                  receptor_radius=30, c_alpha_max_neighbors=None, precomputed_lm_embeddings=None,
-                 remove_hs=False, all_atoms=False, atom_radius=5, atom_max_neighbors=None, knn_only_graph=False):
+                 remove_hs=False, all_atoms=False, atom_radius=5, atom_max_neighbors=None, knn_only_graph=False, device=None):
 
         super(InferenceDataset, self).__init__()
         self.receptor_radius = receptor_radius
@@ -148,8 +150,11 @@ class InferenceDataset(Dataset):
             model_location = "esm2_t33_650M_UR50D"
             model, alphabet = pretrained.load_model_and_alphabet(model_location)
             model.eval()
-            if torch.cuda.is_available():
+            print("here")
+            if device is None and torch.cuda.is_available():
                 model = model.cuda()
+            elif device is not None:
+                model = model.to(device)
 
             protein_sequences = get_sequences(protein_files, protein_sequences)
             labels, sequences = [], []
@@ -158,7 +163,7 @@ class InferenceDataset(Dataset):
                 sequences.extend(s)
                 labels.extend([complex_names[i] + '_chain_' + str(j) for j in range(len(s))])
 
-            lm_embeddings = compute_ESM_embeddings(model, alphabet, labels, sequences)
+            lm_embeddings = compute_ESM_embeddings(model, alphabet, labels, sequences, dev=device)
 
             self.lm_embeddings = []
             for i in range(len(protein_sequences)):

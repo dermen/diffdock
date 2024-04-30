@@ -80,7 +80,9 @@ def sampling(data_list, model, inference_steps, tr_schedule, rot_schedule, tor_s
     loader = DataLoader(data_list, batch_size=batch_size)
     assert not (return_full_trajectory or return_features or pivot), "Not implemented yet in new inference version"
 
-    mask_rotate = torch.from_numpy(data_list[0]['ligand'].mask_rotate[0]).to(device)
+    _to_torch = data_list[0]['ligand'].mask_rotate[0]
+    _to_torch = np.ascontiguousarray(_to_torch)
+    mask_rotate = torch.from_numpy(_to_torch).to(device)
 
     confidence = None
     if confidence_model is not None:

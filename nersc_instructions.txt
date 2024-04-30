@@ -1,0 +1,62 @@
+# Steps to get DiffDock running on GPUs at Perlmutter NERSC:
+
+# connect to perlmutter, then clone a python environment to your project storate
+# in this case Im using project m4326
+module load python
+conda create --prefix $CFS/m4326/dd --clone nersc-mpi4py
+conda activate $CFS/m4326/dd
+
+# install dependencies with pip.. this took some tinkering 
+python -m pip install prody
+python -m pip install torch
+python -m pip install e3nn networkx pandas rdkit scikit-learn scipy torchmetrics gradio requests
+python -m pip install fair-esm
+
+# downgrade torch (was this really necessary?)
+python -m pip install torch==2.2.1
+
+# also did this, but not sure if it was necessary:
+python -m pip install ninja
+
+# download openfold
+git clone https://github.com/aqlaboratory/openfold.git
+cd openfold
+
+# make the following diff in openfold
+diff --git a/setup.py b/setup.py
+index bec9862..9179856 100644
+--- a/setup.py
++++ b/setup.py
+@@ -29,7 +29,7 @@ version_dependent_macros = [
+ ]
+ 
+ extra_cuda_flags = [
+-    '-std=c++14',
++    '-std=c++17',
+     '-maxrregcount=50',
+     '-U__CUDA_NO_HALF_OPERATORS__',
+     '-U__CUDA_NO_HALF_CONVERSIONS__',
+
+
+# build open fold
+python setup.py build
+python setup.py install
+
+# remaining installs (these take forever...):
+python -m pip install torch-cluster
+python -m pip install torch-spline-conv
+python -m pip install torch-sparse
+python -m pip install torch-scatter
+python -m pip install torch-geometric
+
+# optional ? 
+python -m pip install git+https://github.com/NVIDIA/dllogger#egg=dllogger
+
+# Download DiffDock:
+git clone https://github.com/gcorso/DiffDock.git
+
+# test
+cd DiffDock
+# this will take a long time, especially the first time you execute as it generates some orientation databases ...
+python inference.py -h
+
