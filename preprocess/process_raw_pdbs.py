@@ -28,8 +28,8 @@ def main(glob_string, output_directory):
     for nd in needed_dirs:
         nd_path = pjoin(output_directory, nd)
         print(nd_path)
-        if not os.path.exists(nd):
-            os.mkdir(nd)
+        if not os.path.exists(nd_path):
+            os.makedirs(nd_path)
 
     print('results --> %s' % output_directory)
     print('directories correct')
