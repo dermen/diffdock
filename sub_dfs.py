@@ -1,6 +1,7 @@
 import os
 import pandas
 import numpy as np
+import sys
 
 # on 4 NERSC nodes, each with 4 GPUs, 4000 complexes can be run in ~2-3 hours
 
@@ -8,12 +9,14 @@ import numpy as np
 #df = pandas.read_csv(master_csv)
 
 np.random.seed(1234)
-max_proc = 100000
-master_csv = "3i28/combined_yes_no.pkl"
-df = pandas.read_pickle(master_csv).reset_index(drop=True)
-df = df.iloc[np.random.permutation(len(df))[:max_proc]]
-n_csv = 25  # so ~ 4000 complexes per CSV
-sub_rootdir="3i28/sEH_yes_no"  # this folder will be created to store the output and intermediate files
+master_csv = sys.argv[1]#"3i28/combined_yes_no.pkl"
+df = pandas.read_csv(master_csv, sep=",").reset_index(drop=True)
+#max_proc = 100000
+max_proc = len(df)
+#df = df.iloc[np.random.permutation(len(df))[:max_proc]]
+n_csv = 2  # so ~ 4000 complexes per CSV
+#sub_rootdir="3i28/sEH_yes_no"  # this folder will be created to store the output and intermediate files
+sub_rootdir="fr60"  # this folder will be created to store the output and intermediate files
 submit_jobs = True  # set to False to simply print the sbatch commands
 
 if not os.path.exists(sub_rootdir):

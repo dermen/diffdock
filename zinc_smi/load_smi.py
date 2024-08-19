@@ -23,6 +23,7 @@ for i_smi, smi in enumerate(smis):
     if os.path.exists(outfile):
         print(f"File {outfile} exists! Continuing...")
         continue
+    # TODO  tru MultiThreadSimilesMolSupplier
     supp = Chem.rdmolfiles.SmilesMolSupplier(smi)
     records = []
     Nrec = len(supp)
@@ -39,6 +40,7 @@ for i_smi, smi in enumerate(smis):
     if COMM.rank==0:
         a,b = zip(*records)
         df = pandas.DataFrame({"smiles":a,"zinc":b})
+        # TODO consider hdf5 format instead of pickle...
         df.to_pickle(outfile)
         print(f"Wrote {outfile}.")
 
