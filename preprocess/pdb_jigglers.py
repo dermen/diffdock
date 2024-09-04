@@ -19,14 +19,26 @@ print(f"PDB Jigglers will do {args.njiggles} jiggles")
 print("Using shift range:", args.shiftRange)
 pdb_code = os.path.basename(args.pdbin).split(".")[0]
 
+cmd=f"""
+{jigglepdb} \
+ -v shift=byB -v seed=%d \
+ -v shift=%f \
+ -v frac_thrubond=0.9 -v ncyc_thrubond=500 \
+ -v frac_magnforce=1.1 -v ncyc_magnforce=500 \
+ -v shift_scale=1 \
+ -v dry_shift_scale=1 {args.pdbin} > %s
+"""
+
 for i_jiggle in range(args.njiggles):
     jiggled_pdb=os.path.join(args.outdir, "%s_jiggled_%d.pdb" % (pdb_code, i_jiggle))
     seed = random.getrandbits(16) if args.seed is None else args.seed
     shift = random.uniform(*args.shiftRange)
-    cmd=f'{jigglepdb} -v seed={seed} -v shift={shift} {args.pdbin} > {jiggled_pdb}'
+    
     logfile = jiggled_pdb.replace(".pdb", ".sh")
-    print(cmd)
-    os.system(f"echo '{cmd}' > {logfile};{cmd}")
+    cmd_i =cmd % (seed, shift, jiggled_pdb) 
+    print(cmd_i)
+
+    os.system(f"echo '{cmd_i}' > {logfile};{cmd_i}")
     print(f"jiggles done so far: {i_jiggle+1}/{args.njiggles}")
 
 print(f"Copying reference PDB {args.pdbin} to {args.outdir}")
